@@ -56,8 +56,8 @@ def cell2pos(cell_x, cell_y, x_offset=0, y_offset=0):
 
 
 class PowerUpType(enum.Enum):
-    none = enum.auto()
     multishot = enum.auto()
+    superfast = enum.auto()
 
 
 class PowerUp(Actor):
@@ -65,7 +65,8 @@ class PowerUp(Actor):
     # TODO: make the power up sprite glow inticingly
 
     def __init__(self, pos, powerup_type):
-        # super().__init__(f'powerup_{type.name}', pos)  # TODO: use correct image
+        # TODO: different images for each powerup type
+        # super().__init__(f'powerup_{type.name}', pos)  
         super().__init__('crate_metal', pos)
         self.type = powerup_type
         self.done = False
@@ -74,7 +75,7 @@ class PowerUp(Actor):
         # check to see if the player exists and collides with this powerup
         if game.player and game.player.colliderect(self):
             game.play_sound('powerup')
-            game.player.powerup = self.type
+            game.player.powerups.append(self.type)
             self.done = True  # destroy self
         
 
@@ -98,7 +99,7 @@ class Player(Actor):
 
     INVULNERABILITY_TIME = 100  # TODO: what are the units?
     RESPAWN_TIME = 100
-    RELOAD_TIME = 0 
+    RELOAD_TIME = 10 
 
     def __init__(self, pos):
         super().__init__("blank", pos)
@@ -118,8 +119,8 @@ class Player(Actor):
         # down - when it reaches zero the player can shoot again
         self.fire_timer = 0
 
-        # Keep track of the player's current powerup, if any
-        self.powerup = PowerUpType.none
+        # Keep track of the player's powerups, if any
+        self.powerups = []
 
 
     def move(self, dx, dy, speed):
@@ -210,29 +211,30 @@ class Player(Actor):
 
             self.fire_timer -= 1
 
+            # determine reload time given powerups
+            if PowerUpType.superfast in self.powerups:
+                reload_time = 0
+            else:
+                reload_time = self.RELOAD_TIME
+
             # Fire cannon (or allow firing animation to finish)
             if self.fire_timer < 0 and (self.frame > 0 or keyboard.space):
                 if self.frame == 0:
                     # Create bullet(s)
                     bullet_pos = (self.x, self.y - 8)
 
-                    if self.powerup == PowerUpType.none:
-                        game.play_sound("laser")
-                        game.bullets.append(Bullet(bullet_pos))
+                    game.play_sound("laser")
+                    game.bullets.append(Bullet(bullet_pos))
 
-                    elif self.powerup == PowerUpType.multishot:
+                    if PowerUpType.multishot in self.powerups:
                         game.play_sound("laser")
                         game.bullets.extend([
                             Bullet(bullet_pos, BulletType.laser, -10), 
-                            Bullet(bullet_pos, BulletType.laser,   0), 
                             Bullet(bullet_pos, BulletType.laser,  10), 
                         ])
 
-                    else:
-                        raise NotImplementedError(f'Unsupported power up type: {self.powerup}')
-
                 self.frame = (self.frame + 1) % 3
-                self.fire_timer = Player.RELOAD_TIME
+                self.fire_timer = reload_time
 
             # Check to see if any enemy segments collide with the player, as well as the flying enemy.
             # We create a list consisting of all enemy segments, and append another list containing only the
@@ -251,6 +253,8 @@ class Player(Actor):
                         self.alive = False
                         self.timer = 0
                         self.lives -= 1
+                        self.powerups = []
+
         else:
             # Not alive
             # Wait a while before respawning
@@ -755,8 +759,8 @@ class Game:
         # rock in the segment's place. They indicate a grid cell location where we're planning to create the new rock,
         # we need to ensure the new rock would not overlap with the player sprite
 
-        # Don't go off edge of screen or above the player zone
-        if x < 40 or x > 440 or y < 592 or y > 784:
+        # Don't go off edge of screen # or above the player zone
+        if x < 40 or x > 440: # or y < 592 or y > 784:
             return False
 
         # Get coordinates of corners of player sprite's collision rectangle
@@ -824,10 +828,10 @@ class Game:
         # small chance of re-creating power up 
         if not self.powerups and random() < self.POWERUP_CHANCE:    
             while True:
-                powerup_x, powerup_y = randint(41, 439), randint(593, 783)
+                powerup_x, powerup_y = randint(41, 439), randint(41, 783)
                 if self.allow_movement(powerup_x, powerup_y):
                     break
-            self.powerups.append(PowerUp((powerup_x, powerup_y), PowerUpType.multishot))
+            self.powerups.append(PowerUp((powerup_x, powerup_y), choice(list(PowerUpType))))
 
         if self.segments == []:
             # No myriapod segments – start a new wave

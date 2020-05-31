@@ -66,13 +66,14 @@ class PowerUp(Actor):
 
     def __init__(self, pos, powerup_type):
         # super().__init__(f'powerup_{type.name}', pos)  # TODO: use correct image
-        super().__init__('player00', pos)
+        super().__init__('crate_metal', pos)
         self.type = powerup_type
         self.done = False
     
     def update(self):
         # check to see if the player exists and collides with this powerup
         if game.player and game.player.colliderect(self):
+            game.play_sound('powerup')
             game.player.powerup = self.type
             self.done = True  # destroy self
         

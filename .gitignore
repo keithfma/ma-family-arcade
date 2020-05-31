@@ -1,2 +1,3 @@
 .ma-family-arcade-venv
 **/__pycache__
+.*.swp

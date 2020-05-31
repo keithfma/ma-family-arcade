@@ -58,6 +58,7 @@ def cell2pos(cell_x, cell_y, x_offset=0, y_offset=0):
 class PowerUpType(enum.Enum):
     multishot = enum.auto()
     superfast = enum.auto()
+    missileshot = enum.auto()
 
 
 class PowerUp(Actor):
@@ -67,7 +68,7 @@ class PowerUp(Actor):
     def __init__(self, pos, powerup_type):
         # TODO: different images for each powerup type
         # super().__init__(f'powerup_{type.name}', pos)  
-        super().__init__('crate_metal', pos)
+        super().__init__(f'powerup_{powerup_type.name}', pos)
         self.type = powerup_type
         self.done = False
     
@@ -220,18 +221,20 @@ class Player(Actor):
             # Fire cannon (or allow firing animation to finish)
             if self.fire_timer < 0 and (self.frame > 0 or keyboard.space):
                 if self.frame == 0:
+
                     # Create bullet(s)
                     bullet_pos = (self.x, self.y - 8)
 
-                    game.play_sound("laser")
                     game.bullets.append(Bullet(bullet_pos))
 
                     if PowerUpType.multishot in self.powerups:
-                        game.play_sound("laser")
                         game.bullets.extend([
                             Bullet(bullet_pos, BulletType.laser, -10), 
                             Bullet(bullet_pos, BulletType.laser,  10), 
                         ])
+
+                    if PowerUpType.missileshot in self.powerups:
+                        game.bullets.append(Bullet(bullet_pos, BulletType.missile))
 
                 self.frame = (self.frame + 1) % 3
                 self.fire_timer = reload_time
@@ -371,6 +374,7 @@ class BulletType(enum.Enum):
     """
     # note: enum name should match the image name
     laser = enum.auto()
+    missile = enum.auto()  # TODO: make this more damaging (AOE)
 
 
 
@@ -382,7 +386,8 @@ class Bullet(Actor):
             angle: the angle in degrees that the bullet should travel in, with 0 as
                 straight up and positive clockwise
         """
-        super().__init__("bullet", pos)
+        super().__init__(bullet_type.name, pos)
+        game.play_sound(bullet_type.name)
 
         self.done = False
 
@@ -392,6 +397,8 @@ class Bullet(Actor):
         # set speed based on bullet type
         if self.type == BulletType.laser:
             self.speed = 24
+        elif self.type == BulletType.missile:
+            self.speed = 8
         else:
             raise NotImplementedError(f'No speed setting for bullet of type: {self.type}') 
 

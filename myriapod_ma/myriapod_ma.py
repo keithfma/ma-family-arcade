@@ -872,7 +872,7 @@ def draw():
         screen.blit("title", (0, 0))
 
         # 14 frames of animation for "Press space to start", updating every 4 frames
-        screen.blit("space" + str((game.time // 4) % 14), (0, 420))
+        screen.blit("space" + str((game.time // 4) % 14), (0, 520))
 
     elif state == State.PLAY:
         # Display number of lives

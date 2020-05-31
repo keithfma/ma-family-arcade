@@ -97,7 +97,7 @@ class Player(Actor):
 
     INVULNERABILITY_TIME = 100  # TODO: what are the units?
     RESPAWN_TIME = 100
-    RELOAD_TIME = 5 
+    RELOAD_TIME = 0 
 
     def __init__(self, pos):
         super().__init__("blank", pos)
@@ -714,6 +714,9 @@ class Segment(Actor):
         self.image = "seg" + str(int(self.fast)) + str(int(self.health == 2)) + str(int(self.head)) + str(direction) + str(leg_frame)
 
 class Game:
+
+    POWERUP_CHANCE = 0.1  # probabilty the powerup will be recreated in a given frame
+
     def __init__(self, player=None):
         self.wave = -1
         self.time = 0
@@ -729,23 +732,14 @@ class Game:
         self.segments = []
 
         self.flying_enemy = None
+        self.powerups = []
 
         self.score = 0
-
-        # DEBUG: create a single static powerup 
-        # TODO: make this randomly appear in the update function
-        self.powerups = []
-        self.powerups.append(PowerUp((290, 768), PowerUpType.multishot)) 
 
 
     def damage(self, cell_x, cell_y, amount, from_bullet=False):
         # Find the rock at this grid cell (or None if no rock here)
-        try:
-            rock = self.grid[cell_y][cell_x]
-        except Exception:
-            import pdb
-            pdb.set_trace()
-
+        rock = self.grid[cell_y][cell_x]
         if rock != None:
             # rock.damage returns False if the rock has lost all its health – in this case, the grid cell will be set
             # to None, overwriting the rock object reference
@@ -816,7 +810,7 @@ class Game:
         # Recreate the segments list, which will contain all existing segments except those whose health is zero
         self.segments = [s for s in self.segments if s.health > 0]
 
-        # Recreate the powerups list, which will contain all existing powerups except those which have timed out or been picked up
+        # Recreate the powerups list, which will contain all existing powerups except those who are picked up
         self.powerups = [p for p in self.powerups if not p.done]
 
         if self.flying_enemy:
@@ -825,6 +819,14 @@ class Game:
                 self.flying_enemy = None
         elif random() < .01:    # If there is no flying enemy, small chance of creating one each frame
             self.flying_enemy = FlyingEnemy(self.player.x if self.player else 240)
+
+        # small chance of re-creating power up 
+        if not self.powerups and random() < self.POWERUP_CHANCE:    
+            while True:
+                powerup_x, powerup_y = randint(41, 439), randint(593, 783)
+                if self.allow_movement(powerup_x, powerup_y):
+                    break
+            self.powerups.append(PowerUp((powerup_x, powerup_y), PowerUpType.multishot))
 
         if self.segments == []:
             # No myriapod segments – start a new wave

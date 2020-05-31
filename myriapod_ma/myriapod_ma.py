@@ -1,12 +1,15 @@
 import pgzero, pgzrun, pygame, sys
 from random import choice, randint, random
-from enum import Enum
+import enum
+import math
+
 
 # Check Python version number. sys.version_info gives version as a tuple, e.g. if (3,7,2,'final',0) for version 3.7.2.
 # Unlike many languages, Python can compare two tuples in the same way that you can compare numbers.
 if sys.version_info < (3,5):
     print("This game requires at least version 3.5 of Python. Please download it from www.python.org")
     sys.exit()
+
 
 # Check Pygame Zero version. This is a bit trickier because Pygame Zero only lets us get its version number as a string.
 # So we have to split the string into a list, using '.' as the character to split on. We convert each element of the
@@ -18,28 +21,62 @@ if pgzero_version < [1,2]:
     print("This game requires at least version 1.2 of Pygame Zero. You have version {0}. Please upgrade using the command 'pip3 install --upgrade pgzero'".format(pgzero.__version__))
     sys.exit()
 
-WIDTH = 480
+
+WIDTH = 480  # note: special pgzero vars, must match image sizes
 HEIGHT = 800
 TITLE = "Myriapod"
 
+
 DEBUG_TEST_RANDOM_POSITIONS = False
+
 
 # Pygame Zero allows you to access and change sprite positions based on various
 # anchor points
 CENTRE_ANCHOR = ("center", "center")
 
+
 num_grid_rows = 25
 num_grid_cols = 14
 
-# Convert a position in pixel units to a position in grid units. In this game, a grid square is 32 pixels.
-def pos2cell(x, y):
-    return ((int(x)-16)//32, int(y)//32)
 
-# Convert grid cell position to pixel coordinates, with a given offset
+
+def pos2cell(x, y):
+    """Convert a position in pixel units to a position in grid units. In this game, a grid square is 32 pixels."""
+    return (  # cludge to restrict checks to within grid limits needed due to new powerups traveling diagonals 
+        max(0, min(num_grid_cols-1, (int(x)-16)//32)),
+        max(0, min(num_grid_rows-1, int(y)//32))
+    )
+
+
 def cell2pos(cell_x, cell_y, x_offset=0, y_offset=0):
+    """Convert grid cell position to pixel coordinates, with a given offset"""
     # If the requested offset is zero, returns the centre of the requested cell, hence the +16. In the case of the
     # X axis, there's a 16 pixel border at the left and right of the screen, hence +16 becomes +32.
     return ((cell_x * 32) + 32 + x_offset, (cell_y * 32) + 16 + y_offset)
+
+
+class PowerUpType(enum.Enum):
+    none = enum.auto()
+    multishot = enum.auto()
+
+
+class PowerUp(Actor):
+    """Gives the player a power up if collected"""
+    # TODO: make the power up sprite glow inticingly
+
+    def __init__(self, pos, powerup_type):
+        # super().__init__(f'powerup_{type.name}', pos)  # TODO: use correct image
+        super().__init__('player00', pos)
+        self.type = powerup_type
+        self.done = False
+    
+    def update(self):
+        # check to see if the player exists and collides with this powerup
+        if game.player and game.player.colliderect(self):
+            game.player.powerup = self.type
+            self.done = True  # destroy self
+        
+
 
 class Explosion(Actor):
     def __init__(self, pos, type):
@@ -58,9 +95,9 @@ class Explosion(Actor):
 
 class Player(Actor):
 
-    INVULNERABILITY_TIME = 100
+    INVULNERABILITY_TIME = 100  # TODO: what are the units?
     RESPAWN_TIME = 100
-    RELOAD_TIME = 10
+    RELOAD_TIME = 5 
 
     def __init__(self, pos):
         super().__init__("blank", pos)
@@ -69,7 +106,7 @@ class Player(Actor):
         self.direction = 0
         self.frame = 0
 
-        self.lives = 3
+        self.lives = 15 
         self.alive = True
 
         # timer is used for animation, respawning and for ensuring the player is
@@ -79,6 +116,10 @@ class Player(Actor):
         # When the player shoots, this is set to RELOAD_TIME - it then counts
         # down - when it reaches zero the player can shoot again
         self.fire_timer = 0
+
+        # Keep track of the player's current powerup, if any
+        self.powerup = PowerUpType.none
+
 
     def move(self, dx, dy, speed):
         # dx and dy will each be either 0, -1 or 1. speed is an integer indicating
@@ -171,9 +212,24 @@ class Player(Actor):
             # Fire cannon (or allow firing animation to finish)
             if self.fire_timer < 0 and (self.frame > 0 or keyboard.space):
                 if self.frame == 0:
-                    # Create a bullet
-                    game.play_sound("laser")
-                    game.bullets.append(Bullet((self.x, self.y - 8)))
+                    # Create bullet(s)
+                    bullet_pos = (self.x, self.y - 8)
+
+                    if self.powerup == PowerUpType.none:
+                        game.play_sound("laser")
+                        game.bullets.append(Bullet(bullet_pos))
+
+                    elif self.powerup == PowerUpType.multishot:
+                        game.play_sound("laser")
+                        game.bullets.extend([
+                            Bullet(bullet_pos, BulletType.laser, -10), 
+                            Bullet(bullet_pos, BulletType.laser,   0), 
+                            Bullet(bullet_pos, BulletType.laser,  10), 
+                        ])
+
+                    else:
+                        raise NotImplementedError(f'Unsupported power up type: {self.powerup}')
+
                 self.frame = (self.frame + 1) % 3
                 self.fire_timer = Player.RELOAD_TIME
 
@@ -305,15 +361,40 @@ class Rock(Actor):
         self.image = "rock" + colour + str(self.type) + health
 
 
+class BulletType(enum.Enum):
+    """All the kinds of bullets, which may look or behave differently
+    """
+    # note: enum name should match the image name
+    laser = enum.auto()
+
+
+
 class Bullet(Actor):
-    def __init__(self, pos):
+    def __init__(self, pos, bullet_type=BulletType.laser, angle=0):
+        """Create a bullet object
+        
+        Args:
+            angle: the angle in degrees that the bullet should travel in, with 0 as
+                straight up and positive clockwise
+        """
         super().__init__("bullet", pos)
 
         self.done = False
 
+        self.type = bullet_type
+        self.angle = math.pi / 180 * angle  # to radians
+        
+        # set speed based on bullet type
+        if self.type == BulletType.laser:
+            self.speed = 24
+        else:
+            raise NotImplementedError(f'No speed setting for bullet of type: {self.type}') 
+
+
     def update(self):
-        # Move up the screen, 24 pixels per frame
-        self.y -= 24
+        # Move up the screen at the specified angle and speed
+        self.y -= self.speed * math.cos(self.angle)
+        self.x += self.speed * math.sin(self.angle)
 
         # game.damage checks to see if there is a rock at the given position – if so, it damages
         # the rock and returns True
@@ -651,9 +732,19 @@ class Game:
 
         self.score = 0
 
+        # DEBUG: create a single static powerup 
+        # TODO: make this randomly appear in the update function
+        self.powerups = []
+        self.powerups.append(PowerUp((290, 768), PowerUpType.multishot)) 
+
+
     def damage(self, cell_x, cell_y, amount, from_bullet=False):
         # Find the rock at this grid cell (or None if no rock here)
-        rock = self.grid[cell_y][cell_x]
+        try:
+            rock = self.grid[cell_y][cell_x]
+        except Exception:
+            import pdb
+            pdb.set_trace()
 
         if rock != None:
             # rock.damage returns False if the rock has lost all its health – in this case, the grid cell will be set
@@ -711,7 +802,7 @@ class Game:
         # Call update method on all objects. grid is a list of lists, equivalent to a 2-dimensional array,
         # so sum can be used to produce a single list containing all grid objects plus the contents of the other
         # Actor lists. The player and flying enemy, which are object references rather than lists, are appended as single-item lists.
-        all_objects = sum(self.grid, self.bullets + self.segments + self.explosions + [self.player] + [self.flying_enemy])
+        all_objects = sum(self.grid, self.bullets + self.segments + self.explosions + [self.player] + [self.flying_enemy] + self.powerups)
         for obj in all_objects:
             if obj:
                 obj.update()
@@ -724,6 +815,9 @@ class Game:
 
         # Recreate the segments list, which will contain all existing segments except those whose health is zero
         self.segments = [s for s in self.segments if s.health > 0]
+
+        # Recreate the powerups list, which will contain all existing powerups except those which have timed out or been picked up
+        self.powerups = [p for p in self.powerups if not p.done]
 
         if self.flying_enemy:
             # Destroy flying enemy if it goes off the left or right sides of the screen, or health is zero
@@ -773,7 +867,7 @@ class Game:
 
         # Create a list of all grid locations and other objects which need to be drawn
         # (Most grid locations will be set to None as they are unoccupied, hence the check "if obj:" further down)
-        all_objs = sum(self.grid, self.bullets + self.segments + self.explosions + [self.player])
+        all_objs = sum(self.grid, self.bullets + self.segments + self.explosions + [self.player] + self.powerups)
 
         # We want to draw objects in order based on their Y position. Objects further down the screen should be drawn
         # after (and therefore in front of) objects higher up the screen. We can use Python's built-in sort function
@@ -834,7 +928,7 @@ def space_pressed():
 
 # Pygame Zero calls the update and draw functions each frame
 
-class State(Enum):
+class State(enum.Enum):
     MENU = 1
     PLAY = 2
     GAME_OVER = 3

@@ -63,21 +63,46 @@ class PowerUpType(enum.Enum):
 
 class PowerUp(Actor):
     """Gives the player a power up if collected"""
-    # TODO: make the power up sprite glow inticingly
 
-    def __init__(self, pos, powerup_type):
-        # TODO: different images for each powerup type
-        # super().__init__(f'powerup_{type.name}', pos)  
+    flicker_rate = 10  # hold state for this many frames
+
+    def __init__(self, pos, powerup_type, lifetime_s=10.0):
+        """Create a new powerup
+
+        Args:
+            powerup_type: enumerated kind of powerup to create
+            lifetime_s: time in seconds before powerup disappears
+        """
         super().__init__(f'powerup_{powerup_type.name}', pos)
         self.type = powerup_type
+        self.flicker = False
+        self.flicker_state = self.flicker_rate - 1
         self.done = False
+
+        clock.schedule_unique(self.expire_soon, 0.8*lifetime_s)
+        clock.schedule_unique(self.expire, lifetime_s)
     
     def update(self):
         # check to see if the player exists and collides with this powerup
         if game.player and game.player.colliderect(self):
             game.play_sound('powerup')
             game.player.powerups.append(self.type)
-            self.done = True  # destroy self
+            self.done = True  # game loop will tidy up
+
+    def expire_soon(self):
+        self.flicker = True
+
+    def expire(self):
+        # game.play_sound('powerup_expired')  # TODO: let's make this sound different
+        self.done = True  # game loop will tidy up
+
+    def draw(self):
+        if self.flicker:
+            self.flicker_state -= 1
+            if self.flicker_state < -self.flicker_rate:
+                self.flicker_state = self.flicker_rate -1
+        if self.flicker_state >= 0:
+            super().draw()  
         
 
 
@@ -379,12 +404,13 @@ class BulletType(enum.Enum):
 
 
 class Bullet(Actor):
-    def __init__(self, pos, bullet_type=BulletType.laser, angle=0):
+    def __init__(self, pos, bullet_type=BulletType.laser, angle=0, speed_multiplier=1.0):
         """Create a bullet object
         
         Args:
             angle: the angle in degrees that the bullet should travel in, with 0 as
                 straight up and positive clockwise
+            speed_multiplier: multiplicative factor applied to base speed
         """
         super().__init__(bullet_type.name, pos)
         game.play_sound(bullet_type.name)
@@ -396,11 +422,12 @@ class Bullet(Actor):
         
         # set speed based on bullet type
         if self.type == BulletType.laser:
-            self.speed = 24
+            base_speed = 24
         elif self.type == BulletType.missile:
-            self.speed = 8
+            base_speed = 6
         else:
             raise NotImplementedError(f'No speed setting for bullet of type: {self.type}') 
+        self.speed = base_speed * speed_multiplier
 
 
     def update(self):
@@ -727,7 +754,7 @@ class Segment(Actor):
 
 class Game:
 
-    POWERUP_CHANCE = 0.1  # probabilty the powerup will be recreated in a given frame
+    POWERUP_CHANCE = 0.15  # probabilty the powerup will be recreated in a given frame
 
     def __init__(self, player=None):
         self.wave = -1

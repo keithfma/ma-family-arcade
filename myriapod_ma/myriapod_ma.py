@@ -136,7 +136,9 @@ class Player(Actor):
 
     INVULNERABILITY_TIME = 100  # TODO: what are the units?
     RESPAWN_TIME = 100
-    RELOAD_TIME = 10 
+    LASER_RELOAD_TIME = 10
+    MISSILE_RELOAD_TIME = 20 
+    # RELOAD_TIME_MULTIPLIER = 1.0
 
     def __init__(self, pos):
         super().__init__("blank", pos)
@@ -154,7 +156,8 @@ class Player(Actor):
 
         # When the player shoots, this is set to RELOAD_TIME - it then counts
         # down - when it reaches zero the player can shoot again
-        self.fire_timer = 0
+        self.laser_fire_timer = 0
+        self.missile_fire_timer = 0
 
         # Keep track of the player's powerups, if any
         self.powerups = []
@@ -246,34 +249,51 @@ class Player(Actor):
                 self.direction = (self.direction + rotation) % 4
 
 
-            self.fire_timer -= 1
+            self.laser_fire_timer -= 1
+            self.missile_fire_timer -= 1
 
-            # determine reload time given powerups
+            # TODO: ugly duplicate code blocks for different bullet types here
+
+            # determine laser reload time given powerups
             if PowerUpType.superfast in self.powerups:
-                reload_time = 0
+                laser_reload_time = 1
             else:
-                reload_time = self.RELOAD_TIME
+                laser_reload_time = self.LASER_RELOAD_TIME
+
+            # Fire laser cannon (or allow firing animation to finish)
+            if self.laser_fire_timer < 0 and (self.frame > 0 or keyboard.space):
+
+                # Create bullet(s)
+                bullet_pos = (self.x, self.y - 8)
+
+                game.bullets.append(Bullet(bullet_pos))
+
+                if PowerUpType.multishot in self.powerups:
+                    game.bullets.extend([
+                        Bullet(bullet_pos, BulletType.laser, -10), 
+                        Bullet(bullet_pos, BulletType.laser,  10), 
+                    ])
+
+                self.laser_fire_timer = laser_reload_time
+
+            # determine missile reload time given powerups
+            if PowerUpType.superfast in self.powerups:
+                missile_reload_time = 2
+            else:
+                missile_reload_time = self.MISSILE_RELOAD_TIME
 
             # Fire cannon (or allow firing animation to finish)
-            if self.fire_timer < 0 and (self.frame > 0 or keyboard.space):
-                if self.frame == 0:
+            if self.missile_fire_timer < 0 and (self.frame > 0 or keyboard.space):
 
-                    # Create bullet(s)
-                    bullet_pos = (self.x, self.y - 8)
+                # Create bullet(s)
+                bullet_pos = (self.x, self.y - 8)
 
-                    game.bullets.append(Bullet(bullet_pos))
+                if PowerUpType.missileshot in self.powerups:
+                    game.bullets.append(Bullet(bullet_pos, BulletType.missile))
 
-                    if PowerUpType.multishot in self.powerups:
-                        game.bullets.extend([
-                            Bullet(bullet_pos, BulletType.laser, -10), 
-                            Bullet(bullet_pos, BulletType.laser,  10), 
-                        ])
+                self.missile_fire_timer = missile_reload_time
 
-                    if PowerUpType.missileshot in self.powerups:
-                        game.bullets.append(Bullet(bullet_pos, BulletType.missile))
 
-                self.frame = (self.frame + 1) % 3
-                self.fire_timer = reload_time
 
             # Check to see if any enemy segments collide with the player, as well as the flying enemy.
             # We create a list consisting of all enemy segments, and append another list containing only the

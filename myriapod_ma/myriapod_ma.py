@@ -121,6 +121,17 @@ class Explosion(Actor):
         self.image = "exp" + str(self.type) + str(self.timer // 4)
 
 
+class BigExplosion(Actor):
+    def __init__(self, pos):
+        super().__init__("blank", pos)
+        self.type = type
+        self.timer = 0
+
+    def update(self):
+        self.timer += 1
+        self.image = f"sonicexplosion{(self.timer//8):02d}" 
+
+
 class Player(Actor):
 
     INVULNERABILITY_TIME = 100  # TODO: what are the units?
@@ -429,6 +440,15 @@ class Bullet(Actor):
             raise NotImplementedError(f'No speed setting for bullet of type: {self.type}') 
         self.speed = base_speed * speed_multiplier
 
+    def explode(self):
+        """create an explosion on impact"""
+        # TODO: rocks explosions are annoyingly handled in the Rock class, we ignore that detail for now
+        if self.type == BulletType.laser:
+            game.explosions.append(Explosion(self.pos, 2))
+        elif self.type == BulletType.missile:
+            game.explosions.append(BigExplosion(self.pos))
+        else:
+            raise NotImplementedError(f'No explosion for bullet of type: {self.type}') 
 
     def update(self):
         # Move up the screen at the specified angle and speed
@@ -441,6 +461,7 @@ class Bullet(Actor):
         grid_cell = pos2cell(*self.pos)
         if game.damage(*grid_cell, 1, True):
             # Hit a rock – destroy self
+            self.explode()
             self.done = True
         else:
             # Didn't hit a rock
@@ -449,9 +470,7 @@ class Bullet(Actor):
                 # Is this a valid object reference, and if so, does this bullet's location overlap with the
                 # object's rectangle? (collidepoint is a method from Pygame's Rect class)
                 if obj and obj.collidepoint(self.pos):
-                    # Create explosion
-                    game.explosions.append(Explosion(obj.pos, 2))
-
+                    self.explode()
                     obj.health -= 1
 
                     # Is the object an instance of the Segment class?
